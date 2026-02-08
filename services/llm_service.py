@@ -23,31 +23,48 @@ class LLMService:
         """
         Generates a chat response in simple Hindi using LLM or fallback.
         """
+        if USE_MOCK:
+            return self._mock_chat_response(question)
+        
+        # Real LLM call would go here
+        # return self._call_openai_chat(question)
+        return self._mock_chat_response(question)
+
+    def _mock_chat_response(self, question: str) -> str:
+        question_lower = question.lower()
+
+        # 1. Decision Support ("Should I...", "Kya mujhe...")
+        for key, value in self.dataset.get("decision_support", {}).items():
+            if any(k in question_lower for k in value["keywords"]):
+                return (
+                    f"निर्णय लेने में मदद (Topic: {key}):\n"
+                    f"विचार करें: {' '.join(value['questions'])}\n"
+                    f"सलाह: {value['advice']}"
+                )
+
+        # 2. Transaction Guidance ("How to...", "Kaise karein...")
+        for key, value in self.dataset.get("guidance", {}).items():
+            if any(k in question_lower for k in value["keywords"]):
+                steps = "\n".join(value["steps"])
+                return (
+                    f"कैसे करें (Topic: {key}):\n"
+                    f"{steps}\n\n"
+                    f"⚠️ {value['safety']}"
+                )
+
+        # 3. Concept Learning ("What is...", "Kya hai...")
         # Simple keyword matching for context
         topic_key = None
         for key, value in self.dataset.get("topics", {}).items():
-            if value["hindi_term"] in question or key in question.lower():
+            if value["hindi_term"] in question or key in question_lower:
                 topic_key = key
                 break
         
-        context = ""
         if topic_key:
             data = self.dataset["topics"][topic_key]
-            context = f"Topic: {data['hindi_term']}. Definition: {data['description']} Example: {data['example']}"
+            return f"{data['hindi_term']}: {data['description']} उदाहरण: {data['example']}"
 
-        if USE_MOCK:
-            return self._mock_chat_response(question, context)
-        
-        # Real LLM call would go here
-        # return self._call_openai_chat(question, context)
-        return self._mock_chat_response(question, context) # Fallback to mock for now if no key
-
-    def _mock_chat_response(self, question: str, context: str) -> str:
-        if not context:
-            return "माफ करें, मैं केवल पैसे, बचत, बैंक और लोन के बारे में बता सकता हूँ।"
-        
-        # Construct a simple template-based response from the dataset
-        return f"{context} जैसे कि, {self.dataset['topics'].get(list(self.dataset['topics'].keys())[0])['example']}"
+        return "माफ करें, मैं इस विषय पर जानकारी नहीं दे सकता। कृपया पैसे, बैंक, लोन, एटीएम या यूपीआई के बारे में पूछें।"
 
     def get_quiz_response(self, topic: str) -> dict:
         """
